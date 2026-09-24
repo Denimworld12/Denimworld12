@@ -129,6 +129,9 @@ Portfolio: <a href="https://nikhil-gupta.vercel.app/">nikhil-gupta.vercel.app</a
 <h3 align="left">Connect</h3>
 
 <div align="left">
+  <a href="https://github.com/Denimworld12" target="_blank">
+    <img src="https://img.shields.io/static/v1?message=GitHub&logo=github&label=&color=181717&logoColor=white&labelColor=&style=for-the-badge" height="35" alt="github logo" />
+  </a>
   <a href="https://www.linkedin.com/in/nikhilgupta795/" target="_blank">
     <img src="https://img.shields.io/static/v1?message=LinkedIn&logo=linkedin&label=&color=0077B5&logoColor=white&labelColor=&style=for-the-badge" height="35" alt="linkedin logo" />
   </a>
