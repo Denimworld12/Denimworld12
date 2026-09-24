@@ -145,3 +145,9 @@ Portfolio: <a href="https://nikhil-gupta.vercel.app/">nikhil-gupta.vercel.app</a
     <img src="https://img.shields.io/static/v1?message=Gmail&logo=gmail&label=&color=D14836&logoColor=white&labelColor=&style=for-the-badge" height="35" alt="gmail logo" />
   </a>
 </div>
+
+###
+
+<div align="left">
+  <img src="https://github-readme-stats.vercel.app/api?username=Denimworld12&show_icons=true&theme=default&hide_border=true" alt="GitHub stats" height="170" />
+</div>
