@@ -149,5 +149,8 @@ Portfolio: <a href="https://nikhil-gupta.vercel.app/">nikhil-gupta.vercel.app</a
 ###
 
 <div align="left">
-  <img src="github-metrics.svg" alt="GitHub metrics" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="github-metrics-dark.svg">
+    <img src="github-metrics-light.svg" alt="GitHub metrics" />
+  </picture>
 </div>
