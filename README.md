@@ -149,5 +149,5 @@ Portfolio: <a href="https://nikhil-gupta.vercel.app/">nikhil-gupta.vercel.app</a
 ###
 
 <div align="left">
-  <img src="https://github-readme-stats.vercel.app/api?username=Denimworld12&show_icons=true&theme=default&hide_border=true" alt="GitHub stats" height="170" />
+  <img src="github-metrics.svg" alt="GitHub metrics" />
 </div>
