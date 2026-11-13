@@ -40,5 +40,6 @@ jobs:
             echo "Metrics card unchanged"
           else
             git commit -m "Update profile metrics card"
+            git pull --rebase
             git push
           fi

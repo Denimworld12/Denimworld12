@@ -10,8 +10,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const NAME = "Nikhil Gupta";
-const HANDLE = "@Denimworld12";
 const OUTPUT_DIR = path.resolve(__dirname, "..", "..");
 const API_URL = "https://api.github.com/graphql";
 
@@ -44,16 +42,16 @@ const THEMES = {
 
 const WIDTH = 520;
 // 20px of padding below the last legend row, matching the top padding.
-const HEIGHT = 316;
+const HEIGHT = 240;
 const LEFT = 24;
 const RIGHT = 496;
 
-const GRID_TOP = 178;
+const GRID_TOP = 102;
 const GRID_COLUMNS = 53;
 const CELL = 7;
 const ROW_STEP = 9;
 
-const BAR_TOP = 252;
+const BAR_TOP = 176;
 const BAR_WIDTH = RIGHT - LEFT;
 // Just under 9px, so the last column ends flush with the dividers and bar.
 const COLUMN_STEP = (BAR_WIDTH - CELL) / (GRID_COLUMNS - 1);
@@ -62,7 +60,7 @@ const BAR_LANGUAGES = 8;
 
 const LEGEND_LANGUAGES = 6;
 const LEGEND_COLUMNS = [24, 184, 344];
-const LEGEND_ROWS = [280, 296];
+const LEGEND_ROWS = [204, 220];
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -251,7 +249,7 @@ function renderCard(stats, languages, theme) {
   const total = stats.total.toLocaleString("en-US");
   const label = `font-size="9" font-weight="700" letter-spacing="1" fill="${theme.muted}"`;
   const suffix = `<tspan font-size="11" font-weight="400" fill="${theme.muted}"> day streak</tspan>`;
-  const summary = `${NAME} activity snapshot: ${stats.current} day current streak, ${stats.best} day best streak, most active on ${stats.mostActive}, ${total} contributions in the last year.`;
+  const summary = `Activity snapshot: ${stats.current} day current streak, ${stats.best} day best streak in the last year, most active on ${stats.mostActive}, ${total} contributions in the last year.`;
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}" role="img" aria-label="${escapeXml(summary)}">
   <title>${escapeXml(summary)}</title>
@@ -262,21 +260,15 @@ function renderCard(stats, languages, theme) {
   </defs>
   <rect x="0.5" y="0.5" width="${WIDTH - 1}" height="${HEIGHT - 1}" rx="14" fill="${theme.background}" stroke="${theme.border}"/>
   <g font-family="${FONT}">
-    <text x="${LEFT}" y="38" font-size="20" font-weight="700" fill="${theme.text}">${escapeXml(NAME)}</text>
-    <text x="${LEFT}" y="56" font-size="12" fill="${theme.muted}">${escapeXml(HANDLE)}</text>
-    <rect x="${LEFT}" y="64" width="32" height="3" rx="1.5" fill="${theme.accent}"/>
-    <text x="${RIGHT}" y="38" text-anchor="end" font-size="10" font-weight="600" letter-spacing="1" fill="${theme.muted}">ACTIVITY SNAPSHOT</text>
-    <line x1="${LEFT}" y1="78" x2="${RIGHT}" y2="78" stroke="${theme.divider}"/>
+    <text x="24" y="42" font-size="32" font-weight="800" fill="${theme.accent}">${stats.current}${suffix}</text>
+    <text x="24" y="56" ${label}>CURRENT STREAK</text>
+    <text x="196" y="42" font-size="32" font-weight="800" fill="${theme.text}">${stats.best}${suffix}</text>
+    <text x="196" y="56" ${label}>BEST STREAK (1Y)</text>
+    <text x="368" y="42" font-size="24" font-weight="800" fill="${theme.text}">${stats.mostActive}</text>
+    <text x="368" y="56" ${label}>MOST ACTIVE DAY</text>
+    <line x1="${LEFT}" y1="74" x2="${RIGHT}" y2="74" stroke="${theme.divider}"/>
 
-    <text x="24" y="118" font-size="32" font-weight="800" fill="${theme.accent}">${stats.current}${suffix}</text>
-    <text x="24" y="132" ${label}>CURRENT STREAK</text>
-    <text x="196" y="118" font-size="32" font-weight="800" fill="${theme.text}">${stats.best}${suffix}</text>
-    <text x="196" y="132" ${label}>BEST STREAK</text>
-    <text x="368" y="118" font-size="24" font-weight="800" fill="${theme.text}">${stats.mostActive}</text>
-    <text x="368" y="132" ${label}>MOST ACTIVE DAY</text>
-    <line x1="${LEFT}" y1="150" x2="${RIGHT}" y2="150" stroke="${theme.divider}"/>
-
-    <text x="${LEFT}" y="168" font-size="10" font-weight="700" letter-spacing="1" fill="${theme.muted}">${total} CONTRIBUTIONS IN THE LAST YEAR</text>
+    <text x="${LEFT}" y="92" font-size="10" font-weight="700" letter-spacing="1" fill="${theme.muted}">${total} CONTRIBUTIONS IN THE LAST YEAR</text>
     ${renderHeatmap(stats.weeks, theme)}
 
     <g clip-path="url(#language-bar)">
