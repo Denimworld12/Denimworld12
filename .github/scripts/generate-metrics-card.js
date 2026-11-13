@@ -181,7 +181,8 @@ function round(value) {
   return Math.round(value * 100) / 100;
 }
 
-// GitHub's own bucketing convention for contribution intensity.
+// Fixed thresholds onto the five-step ramp. GitHub's own graph buckets by
+// quartile of the user's activity, so shades can differ from the profile graph.
 function rampStep(count) {
   if (count === 0) return 0;
   if (count <= 3) return 1;
