@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Generates the profile activity card (github-metrics-dark.svg and
-// github-metrics-light.svg) from live GitHub data.
+// Generates the profile stats card (github-metrics-dark.svg and
+// github-metrics-light.svg) from live GitHub data: streaks, all-time
+// contributions, and commit / pull request / issue / star counts.
 //
 // Runs on Node 20+ with no dependencies. Requires METRICS_TOKEN in the
 // environment. The SVGs are embedded in the README through <img>, where GitHub
@@ -25,8 +26,6 @@ const THEMES = {
     muted: "#8b949e",
     accent: "#e3b341",
     divider: "#21262d",
-    ramp: ["#161b22", "#0e4429", "#1a7a3e", "#2ea043", "#56d364"],
-    other: "#30363d",
   },
   light: {
     background: "#ffffff",
@@ -35,61 +34,62 @@ const THEMES = {
     muted: "#656d76",
     accent: "#9a6700",
     divider: "#d8dee4",
-    ramp: ["#ebedf0", "#9be9a8", "#40c463", "#30a14e", "#216e39"],
-    other: "#d0d7de",
   },
 };
 
 const WIDTH = 520;
-// 20px of padding below the last legend row, matching the top padding.
-const HEIGHT = 240;
+const HEIGHT = 216;
 const LEFT = 24;
 const RIGHT = 496;
 
-const GRID_TOP = 102;
-const GRID_COLUMNS = 53;
-const CELL = 7;
-const ROW_STEP = 9;
+// Streak row: three equal columns, the middle one holding the ring.
+const COLUMN_CENTERS = [103, 260, 417];
+const COLUMN_DIVIDERS = [181.5, 338.5];
+const RING_CENTER_Y = 58;
+const RING_RADIUS = 30;
+const FLAME =
+  "M0 -9C3.5 -5.5 6.5 -2.5 6.5 2A6.5 6.5 0 0 1 -6.5 2C-6.5 -0.5 -5 -3 -3 -5C-3 -2.5 -1.5 -1 0 -1.5C1.5 -3 1.5 -6 0 -9Z";
 
-const BAR_TOP = 176;
-const BAR_WIDTH = RIGHT - LEFT;
-// Just under 9px, so the last column ends flush with the dividers and bar.
-const COLUMN_STEP = (BAR_WIDTH - CELL) / (GRID_COLUMNS - 1);
-const BAR_HEIGHT = 8;
-const BAR_LANGUAGES = 8;
+const STATS_DIVIDER_Y = 144;
+const STATS_VALUE_Y = 176;
+const STATS_LABEL_Y = 193;
 
-const LEGEND_LANGUAGES = 6;
-const LEGEND_COLUMNS = [24, 184, 344];
-const LEGEND_ROWS = [204, 220];
+const MONTHS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
 
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-const CALENDAR_QUERY = `
+const PROFILE_QUERY = `
   query {
     viewer {
-      contributionsCollection {
-        contributionCalendar {
-          totalContributions
-          weeks {
-            contributionDays { date contributionCount weekday }
-          }
-        }
-      }
-    }
-  }`;
-
-const LANGUAGES_QUERY = `
-  query {
-    viewer {
+      createdAt
+      pullRequests { totalCount }
+      mergedPullRequests: pullRequests(states: MERGED) { totalCount }
+      issues { totalCount }
       repositories(first: 100, ownerAffiliations: OWNER, isFork: false) {
-        nodes {
-          languages(first: 10, orderBy: { field: SIZE, direction: DESC }) {
-            edges { size node { name color } }
-          }
-        }
+        nodes { stargazerCount }
       }
     }
   }`;
+
+// One contributionsCollection per calendar year, because the API caps a
+// collection at a one year span. The current year needs an explicit end, or
+// the calendar is padded with empty days out to next January.
+function contributionsQuery(firstYear, now) {
+  const collections = [];
+  for (let year = firstYear; year <= now.getUTCFullYear(); year += 1) {
+    const to =
+      year === now.getUTCFullYear() ? now.toISOString() : `${year}-12-31T23:59:59Z`;
+    collections.push(`
+      y${year}: contributionsCollection(from: "${year}-01-01T00:00:00Z", to: "${to}") {
+        totalCommitContributions
+        contributionCalendar {
+          weeks { contributionDays { date contributionCount } }
+        }
+      }`);
+  }
+  return `query { viewer { ${collections.join("")} } }`;
+}
 
 async function graphql(token, query) {
   const response = await fetch(API_URL, {
@@ -117,56 +117,54 @@ async function graphql(token, query) {
 function currentStreak(days) {
   let last = days.length - 1;
   while (last >= 0 && days[last].contributionCount === 0) last -= 1;
-  if (last < days.length - 2) return 0; // last active day is before yesterday
-  let streak = 0;
-  for (let i = last; i >= 0 && days[i].contributionCount > 0; i -= 1) streak += 1;
-  return streak;
+  if (last < 0 || last < days.length - 2) return null; // last active day is before yesterday
+  let first = last;
+  while (first > 0 && days[first - 1].contributionCount > 0) first -= 1;
+  return { length: last - first + 1, start: days[first].date, end: days[last].date };
 }
 
-function bestStreak(days) {
-  let best = 0;
-  let run = 0;
-  for (const day of days) {
-    run = day.contributionCount > 0 ? run + 1 : 0;
-    if (run > best) best = run;
-  }
+function longestStreak(days) {
+  let best = null;
+  let first = -1;
+  days.forEach((day, index) => {
+    if (day.contributionCount === 0) {
+      first = -1;
+      return;
+    }
+    if (first < 0) first = index;
+    const length = index - first + 1;
+    if (!best || length > best.length) {
+      best = { length, start: days[first].date, end: day.date };
+    }
+  });
   return best;
 }
 
-function mostActiveWeekday(days) {
-  const totals = new Array(7).fill(0);
-  for (const day of days) totals[day.weekday] += day.contributionCount;
-  return WEEKDAYS[totals.indexOf(Math.max(...totals))];
-}
-
-function summarizeCalendar(calendar) {
-  const days = calendar.weeks.flatMap((week) => week.contributionDays);
-  return {
-    total: calendar.totalContributions,
-    current: currentStreak(days),
-    best: bestStreak(days),
-    mostActive: mostActiveWeekday(days),
-    weeks: calendar.weeks.slice(-GRID_COLUMNS),
-  };
-}
-
-function summarizeLanguages(repositories) {
-  const byName = new Map();
-  for (const repository of repositories) {
-    for (const edge of repository.languages.edges) {
-      const entry = byName.get(edge.node.name) || {
-        name: edge.node.name,
-        color: edge.node.color,
-        size: 0,
-      };
-      entry.size += edge.size;
-      byName.set(edge.node.name, entry);
+function summarize(profile, collections) {
+  const byDate = new Map();
+  let commits = 0;
+  for (const collection of collections) {
+    commits += collection.totalCommitContributions;
+    for (const week of collection.contributionCalendar.weeks) {
+      for (const day of week.contributionDays) byDate.set(day.date, day);
     }
   }
-  const total = [...byName.values()].reduce((sum, entry) => sum + entry.size, 0);
-  return [...byName.values()]
-    .sort((a, b) => b.size - a.size)
-    .map((entry) => ({ ...entry, share: total > 0 ? entry.size / total : 0 }));
+  const days = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+  return {
+    total: days.reduce((sum, day) => sum + day.contributionCount, 0),
+    since: profile.createdAt.slice(0, 10),
+    today: days.length > 0 ? days[days.length - 1].date : null,
+    current: currentStreak(days),
+    longest: longestStreak(days),
+    commits,
+    pullRequests: profile.pullRequests.totalCount,
+    mergedPullRequests: profile.mergedPullRequests.totalCount,
+    issues: profile.issues.totalCount,
+    stars: profile.repositories.nodes.reduce(
+      (sum, repository) => sum + repository.stargazerCount,
+      0,
+    ),
+  };
 }
 
 function escapeXml(value) {
@@ -181,101 +179,97 @@ function round(value) {
   return Math.round(value * 100) / 100;
 }
 
-// Fixed thresholds onto the five-step ramp. GitHub's own graph buckets by
-// quartile of the user's activity, so shades can differ from the profile graph.
-function rampStep(count) {
-  if (count === 0) return 0;
-  if (count <= 3) return 1;
-  if (count <= 6) return 2;
-  if (count <= 9) return 3;
-  return 4;
+function formatNumber(value) {
+  return value.toLocaleString("en-US");
 }
 
-function renderHeatmap(weeks, theme) {
-  const cells = [];
-  weeks.forEach((week, column) => {
-    for (const day of week.contributionDays) {
-      const x = round(LEFT + column * COLUMN_STEP);
-      const y = GRID_TOP + day.weekday * ROW_STEP;
-      const fill = theme.ramp[rampStep(day.contributionCount)];
-      cells.push(
-        `<rect x="${x}" y="${y}" width="${CELL}" height="${CELL}" rx="1.5" fill="${fill}"/>`,
-      );
-    }
-  });
-  return cells.join("\n    ");
+// Dates arrive as YYYY-MM-DD; the year is spelled out only when it differs
+// from the year the card was generated in.
+function formatDate(date, currentYear) {
+  const [year, month, day] = date.split("-").map(Number);
+  const short = `${MONTHS[month - 1]} ${day}`;
+  return String(year) === currentYear ? short : `${short}, ${year}`;
 }
 
-function renderLanguageBar(languages, theme) {
-  const top = languages.slice(0, BAR_LANGUAGES);
-  const segments = top.map((language) => ({
-    share: language.share,
-    color: language.color || theme.other,
-  }));
-  const otherShare = languages
-    .slice(BAR_LANGUAGES)
-    .reduce((sum, language) => sum + language.share, 0);
-  if (otherShare > 0) segments.push({ share: otherShare, color: theme.other });
-
-  let offset = 0;
-  const rects = segments.map((segment, index) => {
-    const width = segment.share * BAR_WIDTH;
-    const isLast = index === segments.length - 1;
-    // Leave a 1px seam between neighbours.
-    const drawn = isLast ? width : Math.max(width - 1, 0.5);
-    const rect = `<rect x="${round(LEFT + offset)}" y="${BAR_TOP}" width="${round(drawn)}" height="${BAR_HEIGHT}" fill="${escapeXml(segment.color)}"/>`;
-    offset += width;
-    return rect;
-  });
-  return rects.join("\n    ");
+function formatRange(streak, currentYear) {
+  if (!streak) return "No active streak";
+  if (streak.start === streak.end) return formatDate(streak.start, currentYear);
+  return `${formatDate(streak.start, currentYear)} \u2013 ${formatDate(streak.end, currentYear)}`;
 }
 
-function renderLegend(languages, theme) {
-  return languages
-    .slice(0, LEGEND_LANGUAGES)
-    .map((language, index) => {
-      const x = LEGEND_COLUMNS[index % LEGEND_COLUMNS.length];
-      const y = LEGEND_ROWS[Math.floor(index / LEGEND_COLUMNS.length)];
-      const color = escapeXml(language.color || theme.other);
-      const label = `${escapeXml(language.name)} ${(language.share * 100).toFixed(1)}%`;
+function renderStreakColumn(x, value, label, range, theme) {
+  return [
+    `<text x="${x}" y="62" font-size="30" font-weight="800" fill="${theme.text}">${value}</text>`,
+    `<text x="${x}" y="86" font-size="12" font-weight="600" fill="${theme.text}">${label}</text>`,
+    `<text x="${x}" y="104" font-size="10" fill="${theme.muted}">${escapeXml(range)}</text>`,
+  ].join("\n      ");
+}
+
+function renderCurrentStreak(x, streak, range, theme) {
+  const flameY = RING_CENTER_Y - RING_RADIUS;
+  return [
+    `<circle cx="${x}" cy="${RING_CENTER_Y}" r="${RING_RADIUS}" fill="none" stroke="${theme.accent}" stroke-width="4"/>`,
+    // Break the ring behind the flame.
+    `<rect x="${x - 11}" y="${flameY - 6}" width="22" height="12" fill="${theme.background}"/>`,
+    `<path transform="translate(${x} ${flameY + 1})" d="${FLAME}" fill="${theme.accent}"/>`,
+    `<text x="${x}" y="${RING_CENTER_Y + 10}" font-size="28" font-weight="800" fill="${theme.text}">${streak ? streak.length : 0}</text>`,
+    `<text x="${x}" y="110" font-size="12" font-weight="700" fill="${theme.accent}">Current Streak</text>`,
+    `<text x="${x}" y="126" font-size="10" fill="${theme.muted}">${escapeXml(range)}</text>`,
+  ].join("\n      ");
+}
+
+function renderStats(stats, theme) {
+  const tiles = [
+    ["Commits", stats.commits],
+    ["Pull Requests", stats.pullRequests],
+    ["Merged PRs", stats.mergedPullRequests],
+    ["Issues", stats.issues],
+    ["Stars", stats.stars],
+  ];
+  const step = (RIGHT - LEFT) / tiles.length;
+  return tiles
+    .map(([label, value], index) => {
+      const x = round(LEFT + step * (index + 0.5));
       return [
-        `<rect x="${x}" y="${y - 8}" width="8" height="8" rx="2" fill="${color}"/>`,
-        `<text x="${x + 13}" y="${y}" font-size="9" fill="${theme.muted}">${label}</text>`,
-      ].join("\n    ");
+        `<text x="${x}" y="${STATS_VALUE_Y}" font-size="18" font-weight="800" fill="${theme.text}">${formatNumber(value)}</text>`,
+        `<text x="${x}" y="${STATS_LABEL_Y}" font-size="9" font-weight="700" letter-spacing="0.8" fill="${theme.muted}">${label.toUpperCase()}</text>`,
+      ].join("\n      ");
     })
-    .join("\n    ");
+    .join("\n      ");
 }
 
-function renderCard(stats, languages, theme) {
-  const total = stats.total.toLocaleString("en-US");
-  const label = `font-size="9" font-weight="700" letter-spacing="1" fill="${theme.muted}"`;
-  const suffix = `<tspan font-size="11" font-weight="400" fill="${theme.muted}"> day streak</tspan>`;
-  const summary = `Activity snapshot: ${stats.current} day current streak, ${stats.best} day best streak in the last year, most active on ${stats.mostActive}, ${total} contributions in the last year.`;
+function describe(stats) {
+  const current = stats.current ? stats.current.length : 0;
+  const longest = stats.longest ? stats.longest.length : 0;
+  return `GitHub stats: ${current} day current streak, ${longest} day longest streak, ${formatNumber(stats.total)} total contributions, ${formatNumber(stats.commits)} commits, ${formatNumber(stats.pullRequests)} pull requests (${formatNumber(stats.mergedPullRequests)} merged), ${formatNumber(stats.issues)} issues, ${formatNumber(stats.stars)} stars.`;
+}
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}" role="img" aria-label="${escapeXml(summary)}">
-  <title>${escapeXml(summary)}</title>
-  <defs>
-    <clipPath id="language-bar">
-      <rect x="${LEFT}" y="${BAR_TOP}" width="${BAR_WIDTH}" height="${BAR_HEIGHT}" rx="4"/>
-    </clipPath>
-  </defs>
+function renderCard(stats, theme) {
+  const currentYear = (stats.today || stats.since).slice(0, 4);
+  const [left, middle, right] = COLUMN_CENTERS;
+  const summary = escapeXml(describe(stats));
+  const dividers = COLUMN_DIVIDERS.map(
+    (x) => `<line x1="${x}" y1="28" x2="${x}" y2="120" stroke="${theme.divider}"/>`,
+  ).join("\n    ");
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}" role="img" aria-label="${summary}">
+  <title>${summary}</title>
   <rect x="0.5" y="0.5" width="${WIDTH - 1}" height="${HEIGHT - 1}" rx="14" fill="${theme.background}" stroke="${theme.border}"/>
-  <g font-family="${FONT}">
-    <text x="24" y="42" font-size="32" font-weight="800" fill="${theme.accent}">${stats.current}${suffix}</text>
-    <text x="24" y="56" ${label}>CURRENT STREAK</text>
-    <text x="196" y="42" font-size="32" font-weight="800" fill="${theme.text}">${stats.best}${suffix}</text>
-    <text x="196" y="56" ${label}>BEST STREAK (1Y)</text>
-    <text x="368" y="42" font-size="24" font-weight="800" fill="${theme.text}">${stats.mostActive}</text>
-    <text x="368" y="56" ${label}>MOST ACTIVE DAY</text>
-    <line x1="${LEFT}" y1="74" x2="${RIGHT}" y2="74" stroke="${theme.divider}"/>
-
-    <text x="${LEFT}" y="92" font-size="10" font-weight="700" letter-spacing="1" fill="${theme.muted}">${total} CONTRIBUTIONS IN THE LAST YEAR</text>
-    ${renderHeatmap(stats.weeks, theme)}
-
-    <g clip-path="url(#language-bar)">
-    ${renderLanguageBar(languages, theme)}
+  <g font-family="${FONT}" text-anchor="middle">
+    ${dividers}
+    <g>
+      ${renderStreakColumn(left, formatNumber(stats.total), "Total Contributions", `${formatDate(stats.since, currentYear)} \u2013 Present`, theme)}
     </g>
-    ${renderLegend(languages, theme)}
+    <g>
+      ${renderCurrentStreak(middle, stats.current, formatRange(stats.current, currentYear), theme)}
+    </g>
+    <g>
+      ${renderStreakColumn(right, stats.longest ? stats.longest.length : 0, "Longest Streak", formatRange(stats.longest, currentYear), theme)}
+    </g>
+    <line x1="${LEFT}" y1="${STATS_DIVIDER_Y}" x2="${RIGHT}" y2="${STATS_DIVIDER_Y}" stroke="${theme.divider}"/>
+    <g>
+      ${renderStats(stats, theme)}
+    </g>
   </g>
 </svg>
 `;
@@ -285,24 +279,17 @@ async function main() {
   const token = process.env.METRICS_TOKEN;
   if (!token) throw new Error("METRICS_TOKEN is not set");
 
-  const [calendarData, languageData] = await Promise.all([
-    graphql(token, CALENDAR_QUERY),
-    graphql(token, LANGUAGES_QUERY),
-  ]);
-
-  const stats = summarizeCalendar(
-    calendarData.viewer.contributionsCollection.contributionCalendar,
-  );
-  const languages = summarizeLanguages(languageData.viewer.repositories.nodes);
+  const profile = (await graphql(token, PROFILE_QUERY)).viewer;
+  const firstYear = Number(profile.createdAt.slice(0, 4));
+  const contributions = await graphql(token, contributionsQuery(firstYear, new Date()));
+  const stats = summarize(profile, Object.values(contributions.viewer));
 
   for (const [variant, theme] of Object.entries(THEMES)) {
     const file = path.join(OUTPUT_DIR, `github-metrics-${variant}.svg`);
-    fs.writeFileSync(file, renderCard(stats, languages, theme));
+    fs.writeFileSync(file, renderCard(stats, theme));
     console.log(`wrote ${path.relative(process.cwd(), file) || file}`);
   }
-  console.log(
-    `streak ${stats.current} current / ${stats.best} best, most active ${stats.mostActive}, ${stats.total} contributions, ${languages.length} languages`,
-  );
+  console.log(describe(stats));
 }
 
 main().catch((error) => {
