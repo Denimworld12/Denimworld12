@@ -5,10 +5,6 @@
   </picture>
 </div>
 
-<div align="center">
-  <img width="80" src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/137.gif" alt="Porygon" />
-</div>
-
 ###
 
 <img align="right" height="170" src="https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExaGV2MDNyemFsNzBrZWlhNHloM3g4OGcxa3RxMzQxaTg2bWlqajJpayZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/3o6Ei2yv8fqpR3nJG8/giphy.gif" alt="coding gif" />
