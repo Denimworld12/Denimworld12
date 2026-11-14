@@ -26,20 +26,43 @@ jobs:
         with:
           node-version: 20
 
-      - name: Generate profile metrics card
-        run: node .github/scripts/generate-metrics-card.js
+      # The cards are regenerated from scratch, so a lost push race is never
+      # reconciled: drop the stale commit and regenerate on the new tip.
+      - name: Generate and publish profile metrics card
         env:
           METRICS_TOKEN: ${{ secrets.METRICS_TOKEN }}
-
-      - name: Commit updated card
+          TARGET_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
+          set -euo pipefail
           git config user.name "Denimworld12"
           git config user.email "166978100+Denimworld12@users.noreply.github.com"
-          git add github-metrics-dark.svg github-metrics-light.svg
-          if git diff --cached --quiet; then
-            echo "Metrics card unchanged"
-          else
+
+          max_attempts=3
+          for attempt in $(seq 1 "$max_attempts"); do
+            echo "::group::Attempt $attempt of $max_attempts"
+            git fetch origin "$TARGET_BRANCH"
+            git reset --hard FETCH_HEAD
+
+            node .github/scripts/generate-metrics-card.js
+
+            git add github-metrics-dark.svg github-metrics-light.svg
+            if git diff --cached --quiet; then
+              echo "Metrics card unchanged"
+              echo "::endgroup::"
+              exit 0
+            fi
+
             git commit -m "Update profile metrics card"
-            git pull --rebase
-            git push
-          fi
+            if git push origin "HEAD:refs/heads/$TARGET_BRANCH"; then
+              echo "Metrics card published"
+              echo "::endgroup::"
+              exit 0
+            fi
+
+            echo "Push rejected; regenerating against the new $TARGET_BRANCH tip"
+            echo "::endgroup::"
+            sleep $((attempt * 5))
+          done
+
+          echo "::error::Could not publish the metrics card after $max_attempts attempts; $TARGET_BRANCH still has stale data"
+          exit 1
