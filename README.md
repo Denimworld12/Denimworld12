@@ -6,7 +6,7 @@
 </div>
 
 <div align="center">
-  <img width="110" src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/137.png" alt="Porygon" />
+  <img width="80" src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/137.gif" alt="Porygon" />
 </div>
 
 ###
